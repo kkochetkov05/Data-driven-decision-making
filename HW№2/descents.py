@@ -1,6 +1,7 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from interfaces import LearningRateSchedule, AbstractOptimizer, LinearRegressionInterface
+from scipy import sparse
 
 
 # ===== Learning Rate Schedules =====
@@ -22,8 +23,8 @@ class TimeDecayLR(LearningRateSchedule):
         """
         returns: float, learning rate для iteration шага обучения
         """
-
         value = self.lambda_ * pow((self.s0/(self.s0 + iteration)), self.p)
+        return value
         # TODO: реализовать формулу затухающего шага обучения
         raise NotImplementedError()
 
@@ -71,14 +72,16 @@ class BaseDescent(AbstractOptimizer, ABC):
         """
         Оркестрирует весь алгоритм градиентного спуска.
         """
+        self.iteration = 0
         loss_history = [self.model.compute_loss()]
         for _ in range(self.max_iter):
+            delta = self._step()
             loss = self.model.compute_loss()
             loss_history.append(loss)
 
-            if not np.isnan(self._step).all():
+            if np.isnan(delta).any():
                 break
-            if self._step @ self._step < self.tolerance:
+            if delta @ delta < self.tolerance:
                 break
         self.model.loss_history = loss_history
         # TODO: implement
@@ -112,7 +115,7 @@ class StochasticGradientDescent(BaseDescent):
         # 3) обновить веса модели
 
         indexes = np.random.randint(len(self.model.y_train), size = self.batch_size)
-        gradient = self.model.compute_gradients(self.model.X[indexes], self.model.y[indexes])
+        gradient = self.model.compute_gradients(self.model.X_train[indexes], self.model.y_train[indexes])
         delta = - self.lr_schedule.get_lr(self.iteration) * gradient
         self.model.w += delta
 
@@ -134,9 +137,23 @@ class SAGDescent(BaseDescent):
         num_objects, num_features = X_train.shape
 
         if self.grad_memory is None:
-            ...
+            self.grad_memory = np.zeros((num_objects, num_features))
+            self.avg_grad = np.zeros(num_features)
             # TODO: инициализировать хранилища при первом вызове 
 
+        indexes = np.random.choice(num_objects, size=min(self.batch_size, num_objects), replace=False)
+        X_batch = X_train[indexes]
+        if sparse.issparse(X_batch):
+            X_batch = X_batch.toarray()
+        new = self.model.compute_individual_gradients(X_batch, y_train[indexes])
+        old = self.grad_memory[indexes]
+        self.avg_grad += np.sum(new - old, axis=0) / num_objects
+        self.grad_memory[indexes] = new
+        learning_rate = self.lr_schedule.get_lr(self.iteration)
+        delta = - learning_rate * self.avg_grad
+        self.model.w += delta
+        return delta
+    
         # TODO: реализовать SAG
         raise NotImplementedError()
 
@@ -148,6 +165,13 @@ class MomentumDescent(BaseDescent):
         self.velocity = None
 
     def _update_weights(self) -> np.ndarray:
+        if self.iteration == 0:
+            self.velocity = np.zeros_like(self.model.w)
+        g = self.model.compute_gradients()
+        self.velocity = self.beta * self.velocity + self.lr_schedule.get_lr(self.iteration) * g
+        delta = - self.velocity.copy()
+        self.model.w += delta
+        return delta
         # TODO: реализовать градиентный спуск с моментумом
         raise NotImplementedError()
 
@@ -162,6 +186,19 @@ class Adam(BaseDescent):
         self.v = None
 
     def _update_weights(self) -> np.ndarray:
+        if self.iteration == 0:
+            self.m = np.zeros_like(self.model.w)
+            self.v = np.zeros_like(self.model.w)
+        g = self.model.compute_gradients()
+        self.m = self.beta1 * self.m + (1 - self.beta1) * g
+        self.v = self.beta2 * self.v + (1 - self.beta2) * g**2
+        t = self.iteration + 1
+        m_hat = self.m / (1 - pow(self.beta1, t))
+        v_hat = self.v / (1 - pow(self.beta2, t))
+        delta = - self.lr_schedule.get_lr(self.iteration) * m_hat / (np.sqrt(v_hat) + self.eps)
+        self.model.w += delta
+        
+        return delta
         # TODO: реализовать Adam по формуле из ноутбука
         raise NotImplementedError()
 

@@ -26,7 +26,7 @@ class MSELoss(LossFunction, LossFunctionClosedFormMixin):
         returns: float, значение MSE на данных X,y для весов w
         """
 
-        value = (1/len(y)) * pow(X @ w - y, 2)
+        value = np.mean(pow(X @ w - y, 2))
 
         return value
     
@@ -95,6 +95,10 @@ class MSELoss(LossFunction, LossFunctionClosedFormMixin):
         return value
         raise NotImplementedError()
 
+    def individual_gradients(self, X, y, w):
+        gradients = X * (2 * (X @ w - y))[:, None]
+        return gradients
+
 
 class L2Regularization(LossFunction):
 
@@ -152,7 +156,7 @@ class CustomLinearRegression(LinearRegressionInterface):
         Если переданы аргументы, то градиент вычисляется по ним, иначе - по self.X_train и self.y_train
         """
 
-        if X_batch is None and y_batch in None:
+        if X_batch is None and y_batch is None:
             X_batch = self.X_train
             y_batch = self.y_train
         value = self.loss_function.gradient(X_batch, y_batch, self.w)
@@ -167,7 +171,7 @@ class CustomLinearRegression(LinearRegressionInterface):
         Если переданы аргументы, то градиент вычисляется по ним, иначе - по self.X_train и self.y_train
         """
 
-        if X_batch is None and y_batch in None:
+        if X_batch is None and y_batch is None:
             X_batch = self.X_train
             y_batch = self.y_train
         value = self.loss_function.loss(X_batch, y_batch, self.w)
@@ -190,3 +194,7 @@ class CustomLinearRegression(LinearRegressionInterface):
         self.optimizer.optimize()
 
         #raise NotImplementedError("Linear Regression training is not implemented")
+
+    def compute_individual_gradients(self, X_batch, y_batch):
+        value = self.loss_function.individual_gradients(X_batch, y_batch, self.w)
+        return value

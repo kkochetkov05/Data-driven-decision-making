@@ -25,6 +25,9 @@ class LossFunction(ABC):
         returns: np.ndarray, численный градиент функции потерь в точке w
         """
         ...
+
+    def individual_gradients(self, X, y, w):
+        raise NotImplementedError
         
     
 
@@ -76,6 +79,9 @@ class LinearRegressionInterface(ABC):
         y: np.ndarray
         """
         ...
+
+    def compute_individual_gradients(self, X_batch, y_batch):
+        raise NotImplementedError
 
 
 class LearningRateSchedule(ABC):
